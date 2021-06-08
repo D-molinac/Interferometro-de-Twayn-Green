@@ -1,0 +1,87 @@
+%for astigmatismo=0:0.00005:0.0005
+    figure
+n=1024;%número de pixeles en la simulación
+f=0.1;%longitud focal de la lente en metros
+pos_espejo_ideal=0.05;%posición ideal del espejo en metros
+max_defocus=50; % max desviación de la posición ideal del espejo en micrometros
+
+lambda=632e-9;%longitud de onda en nanometros
+k=2*pi/lambda;%número de onda
+pixel= 7.5e-5;%tamaño de pixel en la simulación
+[x,y]=meshgrid(-n/2+1:n/2,-n/2+1:n/2);
+x=x*pixel;y=y*pixel;
+axis=(-n/2+1:n/2)*pixel;
+astigmatismo=0.0003;%podemos alargar un eje para introducir astigmatismo en la lente
+eje=45;%eje del astigmatismo en grados
+xx=x*cosd(eje)+y*sind(eje);
+yy=-x*sind(eje)+y*cosd(eje);
+
+r=sqrt(xx.^2+yy.^2);
+phi=atan2(yy,xx);
+r2=r.*(1+astigmatismo*(sin(3*phi)));
+phase=k/2/f*r2.^2;
+%phase=k/2/f*(xx.^2+(yy*(1-astigmatismo)).^2);%fase de la lente asumiendo una función parabólica
+phase=-k/f*sqrt(1-(xx.^2+(yy*(1-astigmatismo)).^2));%ecuación alternativa
+phase=-k/f*sqrt(1-r2.^2);%ecuación alternativa
+%para una lente esférica
+
+
+defocus=-max_defocus:max_defocus/4:max_defocus;
+
+for jj=1:length(defocus)
+pos_espejo_real=pos_espejo_ideal+defocus(jj)*1e-6;
+prop_distancia=0.0;%distancia óptica desde la lente hasta el plano de observación
+i=sqrt(-1);
+%para una lente con función de fase esférica
+lente=exp(-i*phase);
+theta_y=diff(phase,1,1)/k/pixel;theta_x=diff(phase,1,2)/k/pixel;
+
+phase_esf=-k/f*sqrt(1-(x.^2+(y).^2));%k/2/f*(x.^2+y.^2);
+theta_y_esf=diff(phase_esf,1,1)/k/pixel;theta_x_esf=diff(phase_esf,1,2)/k/pixel;
+
+angulo_espejo_x=theta_x_esf/pos_espejo_ideal*f;
+angulo_espejo_y=theta_y_esf/pos_espejo_ideal*f;%Espejo afinado para una fase esferica
+%usando optica geometrica para ir hasta el espejo
+
+theta_espejo_real_x=theta_x/pos_espejo_real*f;%angulo real con que la fase llega al espejo
+theta_espejo_real_y=theta_y/pos_espejo_real*f;
+
+theta_diff_x=theta_espejo_real_x-angulo_espejo_x;
+theta_diff_y=theta_espejo_real_y-angulo_espejo_y;
+%diferencia en ángulo entre el espejo y el haz
+theta_ref_x=theta_espejo_real_x-2*theta_diff_x;
+theta_ref_y=theta_espejo_real_y-2*theta_diff_y;
+%ángulo de propagación del haz reflejada
+theta_lente_x=theta_ref_x*pos_espejo_real/f;
+theta_lente_y=theta_ref_y*pos_espejo_real/f;
+
+diff_fase_x=theta_lente_x*pixel*k;
+diff_fase_y=theta_lente_y*pixel*k;
+%colocamos el - por el cambio en la dirección
+
+fase=zeros(n,n);
+for j=511:-1:1
+    fase(j,:)=fase(j+1,:)-diff_fase_y(j,:);
+end
+for j=513:1024
+    fase(j,:)=fase(j-1,:)+diff_fase_y(j-1,:);
+end
+for j=511:-1:1
+    fase(:,j)=fase(:,j+1)-diff_fase_x(:,j);
+end
+for j=513:1024
+    fase(:,j)=fase(:,j-1)+diff_fase_x(:,j-1);
+end
+%recreando la fase real
+
+output=exp(i*fase).*lente;
+%pasando de nuevo por la lente
+%[ Propagado] = Prop_nf(output,lambda,prop_distancia,pixel);
+%usando propagación de espectro_angular
+mezcla=real(output+1);%la adición de 1 representa una onda plana del segundo 
+subplot(3,3,jj)
+imagesc(axis,axis,mezcla.*conj(mezcla))%intensidad.
+xlabel('x (m)'),ylabel('y (m)');
+title(strcat('defocus = ',num2str(defocus(jj)),' \mum'))
+end
+%end
